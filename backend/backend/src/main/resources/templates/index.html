@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>ChessTomic - Social Radar</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root { --primary: #4CAF50; --dark-bg: #121212; --panel-bg: #1f1f1f; --border: #333; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--dark-bg); color: white; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* Layout */
+        #header { height: 60px; display: flex; justify-content: space-between; align-items: center; padding: 0 30px; background: var(--panel-bg); border-bottom: 1px solid var(--border); z-index: 1000; }
+        #main-wrapper { display: flex; flex-grow: 1; height: calc(100vh - 60px); }
+        
+        /* Secciones */
+        #map { flex-grow: 1; height: 100%; }
+        #sidebar-left { width: 300px; background: var(--panel-bg); border-right: 1px solid var(--border); overflow-y: auto; padding: 15px; }
+        #social-panel { width: 350px; background: #181818; border-left: 2px solid var(--border); display: flex; flex-direction: column; }
+
+        /* Estilos de Radar */
+        .player-card { background: #2c2c2c; padding: 10px; margin-bottom: 8px; border-radius: 6px; border-left: 4px solid var(--primary); cursor: pointer; }
+        .elo-tag { color: #ffa500; font-weight: bold; }
+        input { width: 100%; padding: 8px; margin: 5px 0; border-radius: 4px; border: 1px solid #444; background: #121212; color: white; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; margin-top: 5px; }
+        .btn-search { background: var(--primary); color: white; }
+        .btn-geo { background: #2196F3; color: white; margin-bottom: 10px; }
+
+        /* Estilos Social */
+        .tabs { display: flex; background: #252525; }
+        .tab-btn { flex: 1; padding: 12px; border: none; background: none; color: #888; cursor: pointer; }
+        .tab-btn.active { color: var(--primary); border-bottom: 2px solid var(--primary); background: #1f1f1f; }
+        .tab-content { display: none; flex-direction: column; flex-grow: 1; padding: 10px; overflow-y: auto; }
+        .tab-content.active { display: flex; }
+        
+        /* Mensajes de Chat */
+        #chat-messages { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+        .msg-bubble { padding: 8px 12px; border-radius: 10px; max-width: 80%; font-size: 0.9em; word-wrap: break-word; }
+        .msg-mine { align-self: flex-end; background: var(--primary); color: white; }
+        .msg-theirs { align-self: flex-start; background: #333; color: white; }
+        
+        /* Estilos de Reto Directo */
+        .challenge-box { background: #2c3e50; border: 2px solid #f1c40f; padding: 10px; border-radius: 8px; margin: 5px 0; text-align: center; }
+        .btn-accept { background: #f1c40f; color: black; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px; width: auto; }
+
+        .input-area { display: flex; gap: 5px; padding-top: 10px; border-top: 1px solid #333; }
+        .nav-button { text-decoration: none; color: white; padding: 8px 15px; border-radius: 4px; background: #333; font-size: 0.9em; }
+        .btn-aceptar {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.btn-rechazar {
+    background-color: #f44336; /* Rojo */
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.btn-rechazar:hover {
+    background-color: #d32f2f;
+}
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <h1 style="margin:0; font-size: 1.5em;">♟️ ChessTomic <span style="font-size: 0.5em; color: var(--primary);">RADAR</span></h1>
+        
+        <div class="nav-auth" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+            <div sec:authorize="!isAuthenticated()">
+                <a href="/login" class="nav-button">Login</a>
+                <a href="/register" class="nav-button" style="background: var(--primary);">Registro</a>
+            </div>
+            
+            <div sec:authorize="isAuthenticated()" style="display:flex; align-items:center; gap:15px;">
+                <span style="color:var(--primary)">Hola, <strong sec:authentication="name" id="currentUsername">Usuario</strong></span>
+                <form th:action="@{/logout}" method="post"><button type="submit" class="nav-button" style="background:#f44336; width: auto; margin: 0;">Salir</button></form>
+            </div>
+        </div>
+    </div>
+            <a href="http://localhost:8080/play">
+    <button style="
+        padding: 12px 24px;
+        font-size: 18px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+    ">
+        Jugar localmente
+    </button>
+</a>
+
+    <div id="main-wrapper">
+        <div id="sidebar-left">
+            <button class="btn-geo" onclick="getLocation()">📍 MI UBICACIÓN</button>
+            <label>Radio (km):</label>
+            <input type="number" id="radiusInput" value="50">
+            <label>ELO Mínimo:</label>
+            <input type="number" id="eloInput" value="0">
+            <button class="btn-search" onclick="buscarAqui()">ESCANEAR ÁREA</button>
+            <hr style="border:0; border-top:1px solid #333; margin:15px 0;">
+            <div id="results-list"><p style="color:#666">Resultados aquí...</p></div>
+        </div>
+
+
+        <div id="map"></div>
+
+        <div id="social-panel">
+            <div class="tabs">
+                <button class="tab-btn active" id="tab-btn-social" onclick="openTab('social')">Amigos</button>
+                <button class="tab-btn" id="tab-btn-chat" style="display:none;" onclick="openTab('chat')">Chat</button>
+            </div>
+            
+            <div id="social-tab" class="tab-content active">
+                <h4 style="margin: 5px 0; color: var(--primary); font-size: 0.9em;">Solicitudes</h4>
+                <div id="friend-requests">
+                    <p style="font-size: 0.8em; color: #888;">No hay solicitudes.</p>
+                </div>
+                <hr style="border:0; border-top:1px solid #333; margin:10px 0;">
+                <h4 style="margin: 5px 0; color: var(--primary); font-size: 0.9em;">Mis Amigos</h4>
+                <div id="my-friends-list">
+                    <p style="font-size: 0.8em; color: #888;">Cargando amigos...</p>
+                </div>
+            </div>
+
+            <div id="chat-tab" class="tab-content">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h4 id="chat-with-title" style="margin:0; color: var(--primary); font-size: 0.9em;">Chat</h4>
+                    <button onclick="openTab('social')" style="width:auto; padding:2px 8px; margin:0; background:#444; font-size:0.7em;">CERRAR</button>
+                </div>
+                <div id="chat-messages"></div>
+                <div class="input-area">
+                    <input type="text" id="chat-input" placeholder="Escribe un mensaje...">
+                    <button onclick="sendPrivateMessage()" style="width:40px; margin:0;">➤</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+   <script th:inline="javascript">
+   var map = L.map('map').setView([40.4167, -3.7033], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        var markers = L.layerGroup().addTo(map);
+        var clickMarker = null, rangeCircle = null, selectedCoords = null;
+        var initialPlayers = [[${players}]]; 
+        var currentUser = [[${#authentication.name}]];
+        var activeChatUser = null;
+
+        function drawPlayers(playerList) {
+            markers.clearLayers();
+            playerList.forEach(p => {
+                if(p.latitude && p.longitude) {
+                    let popupContent = p.username === currentUser ? 
+                        `<b>Tú</b> (ELO: ${p.elo})` : 
+                        `<b>${p.username}</b> (ELO: ${p.elo})<br>
+                         <button onclick="sendFriendRequest('${p.username}')" style="background:#4CAF50; color:white; border:none; padding:5px; cursor:pointer; width:100%; border-radius:3px; margin-top:5px;">Añadir Amigo</button>`;
+
+                    L.marker([p.latitude, p.longitude]).addTo(markers).bindPopup(popupContent);
+                }
+            });
+        }
+        drawPlayers(initialPlayers);
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    selectedCoords = { lat: position.coords.latitude, lng: position.coords.longitude };
+                    map.flyTo([selectedCoords.lat, selectedCoords.lng], 13);
+                    if (clickMarker) map.removeLayer(clickMarker);
+                    clickMarker = L.marker(selectedCoords).addTo(map).bindPopup("Estás aquí").openPopup();
+                });
+            } else { alert("Geolocalización no soportada"); }
+        }
+
+        map.on('click', e => {
+            selectedCoords = e.latlng;
+            if (clickMarker) map.removeLayer(clickMarker);
+            if (rangeCircle) map.removeLayer(rangeCircle);
+            clickMarker = L.marker(selectedCoords).addTo(map);
+            var r = document.getElementById('radiusInput').value * 1000;
+            rangeCircle = L.circle(selectedCoords, { color: '#4CAF50', radius: r }).addTo(map);
+        });
+
+        function buscarAqui() {
+            if (!selectedCoords) return alert("Pica en el mapa primero");
+            const r = document.getElementById('radiusInput').value * 1000;
+            const elo = document.getElementById('eloInput').value;
+            fetch(`/api/players/nearby?lat=${selectedCoords.lat}&lon=${selectedCoords.lng}&radius=${r}&minElo=${elo}`)
+                .then(res => res.json()).then(data => renderResults(data));
+        }
+
+        function renderResults(data) {
+            const list = document.getElementById('results-list');
+            list.innerHTML = data.length ? "" : "<p>Nadie cerca</p>";
+            data.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'player-card';
+                div.innerHTML = `<strong>${p.username}</strong> <span class="elo-tag">${p.elo}</span><br>a ${(p.distanceInMeters/1000).toFixed(1)}km`;
+                div.onclick = () => map.flyTo([p.latitude, p.longitude], 13);
+                list.appendChild(div);
+            });
+        }
+
+        var stompClient = null;
+        function connectSocial() {
+            var socket = new SockJS('/ws-chess');
+            stompClient = Stomp.over(socket);
+            stompClient.connect({}, function() {
+                stompClient.subscribe('/user/queue/messages', function(msg) {
+                    const data = JSON.parse(msg.body);
+                    
+                    if(data.type === "START_GAME") {
+                        window.location.href = `/game/${data.gameId}?color=${data.white === currentUser ? 'white' : 'black'}`;
+                        return;
+                    }
+
+                    if(activeChatUser === data.sender) {
+                        renderBubble(data.sender, data.content);
+                    } else {
+                        alert("Nuevo mensaje de " + data.sender);
+                    }
+                });
+
+stompClient.subscribe('/user/queue/notifications', function (message) {
+    var action = JSON.parse(message.body);
+    
+    if (action.type === 'FRIEND_REQUEST') renderFriendRequest(action);
+    
+    if (action.type === 'FRIEND_ACCEPTED') {
+        alert(action.from + " ha aceptado tu solicitud!");
+        loadFriends();
+    }
+
+    if (action.type === 'CHALLENGE_RECEIVED') {
+        mostrarNotificacionDeReto(action.from);
+    }
+
+    if (action.type === 'CHALLENGE_REJECTED') {
+        alert(action.from + " ha rechazado tu partida.");
+    }
+});
+            });
+        }
+
+function renderBubble(sender, text) {
+    const container = document.getElementById('chat-messages');
+    const isMe = sender === currentUser;
+    const div = document.createElement('div');
+
+    if (text === "__CHALLENGE_INVITE__") {
+
+        div.className = "challenge-box";
+
+        if (isMe) {
+
+            div.innerHTML = `<i>Esperando respuesta al reto...</i>`;
+
+        } else {
+
+         div.id = `challenge-${sender}`;
+
+            div.innerHTML = `
+                 <b>${sender}</b> te ha retado <br><br>
+
+                    <button class="btn-accept"
+                        onclick="acceptChallenge('${sender}')">
+                         ACEPTAR
+                    </button>
+
+                  <button class="btn-rechazar"
+                      onclick="rechazarReto('${sender}')">
+                      RECHAZAR
+               </button>
+            `;
+        }
+
+    } else {
+
+        div.className = `msg-bubble ${isMe ? 'msg-mine' : 'msg-theirs'}`;
+        div.innerText = text;
+    }
+
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    }
+        function chatWith(username) {
+            activeChatUser = username;
+            document.getElementById('chat-with-title').innerHTML = `
+                Chat con ${username} 
+                <button onclick="sendChallenge()" style="width:auto; padding:2px 8px; margin-left:10px; background:#e67e22; font-size:0.7em; display:inline-block; vertical-align:middle;">RETAR ⚔️</button>
+            `;
+            document.getElementById('tab-btn-chat').style.display = "block";
+            openTab('chat');
+            
+            fetch(`/api/chat/history/${username}`)
+                .then(res => res.json())
+                .then(messages => {
+                    const container = document.getElementById('chat-messages');
+                    container.innerHTML = "";
+                    messages.forEach(m => renderBubble(m.sender, m.content));
+                });
+        }
+
+        function sendChallenge() {
+            if(stompClient && activeChatUser) {
+                const text = "__CHALLENGE_INVITE__"; 
+                stompClient.send("/app/private-message", {}, JSON.stringify({
+                    from: currentUser, to: activeChatUser, text: text
+                }));
+                renderBubble(currentUser, text);
+            }
+        }
+
+        function acceptChallenge(challenger) {
+            if(stompClient) {
+                stompClient.send("/app/accept-challenge", {}, JSON.stringify({
+                    challenger: challenger, opponent: currentUser
+                }));
+            }
+        }
+
+        function sendPrivateMessage() {
+            const input = document.getElementById('chat-input');
+            const text = input.value;
+            if(text && activeChatUser && stompClient) {
+                stompClient.send("/app/private-message", {}, JSON.stringify({
+                    from: currentUser, 
+                    to: activeChatUser, 
+                    text: text
+                }));
+                renderBubble(currentUser, text);
+                input.value = "";
+            }
+        }
+
+        function renderFriendRequest(action) {
+            const container = document.getElementById('friend-requests');
+            if (container.querySelector('p')) container.innerHTML = '';
+            const div = document.createElement('div');
+            div.className = 'player-card';
+            div.style.borderLeft = '4px solid #2196F3';
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:0.85em;"><strong>${action.from}</strong></span>
+                    <div style="display:flex; gap:5px;">
+                        <button onclick="acceptFriend('${action.from}', this)" style="background:#4CAF50; width:30px; height:30px; padding:0; margin:0;">✓</button>
+                        <button onclick="rejectFriend(this)" style="background:#f44336; width:30px; height:30px; padding:0; margin:0;">X</button>
+                    </div>
+                </div>`;
+            container.appendChild(div);
+        }
+
+        function acceptFriend(originalSender, btn) {
+            if(stompClient) {
+                stompClient.send("/app/accept-friend", {}, JSON.stringify({ from: originalSender, to: currentUser }));
+                btn.closest('.player-card').remove();
+                setTimeout(loadFriends, 500);
+            }
+        }
+
+        function rejectFriend(btn) { btn.closest('.player-card').remove(); }
+
+        function sendFriendRequest(target) {
+            if (target === currentUser) return alert("¡Eres tú!");
+            stompClient.send("/app/social-action", {}, JSON.stringify({ type: 'FRIEND_REQUEST', from: currentUser, to: target }));
+            alert("Solicitud enviada a " + target);
+        }
+
+        function openTab(name) {
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            
+            document.getElementById(name + '-tab').classList.add('active');
+            document.getElementById('tab-btn-' + name).classList.add('active');
+
+            if(name === 'social') loadFriends();
+        }
+
+        function loadFriends() {
+            fetch('/api/friends')
+                .then(res => res.json())
+                .then(friends => {
+                    const list = document.getElementById('my-friends-list');
+                    list.innerHTML = friends.length ? "" : "<p style='color:#666; font-size:0.8em;'>No tienes amigos aún.</p>";
+                    friends.forEach(f => {
+                        const div = document.createElement('div');
+                        div.className = 'player-card';
+                        div.innerHTML = `
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span><strong>${f.username}</strong> <small>(${f.elo})</small></span>
+                                <div style="display:flex; gap:5px;">
+                                    <button onclick="chatWith('${f.username}')" style="background:#2196F3; width:35px; height:30px; padding:0; margin:0;">💬</button>
+                                    <button onclick="removeFriend('${f.id}')" style="background:#f44336; width:35px; height:30px; padding:0; margin:0;">🗑️</button>
+                                </div>
+                            </div>`;
+                        list.appendChild(div);
+                    });
+                });
+        }
+
+        function removeFriend(friendshipId) {
+            if(confirm("¿Eliminar amigo?")) {
+                fetch(`/api/friends/${friendshipId}`, { method: 'DELETE' }).then(() => loadFriends());
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', connectSocial);
+function mostrarNotificacionDeReto(nombreChallenger) {
+
+    const html = `
+        <div id="reto-${nombreChallenger}" class="notificacion">
+            <p><strong>${nombreChallenger}</strong> te ha retado!</p>
+            <button onclick="acceptChallenge('${nombreChallenger}')" style="background-color: #4CAF50; color: white;">Aceptar</button>
+            
+            <button onclick="rechazarReto('${nombreChallenger}')" style="background-color: #f44336; color: white; margin-left: 10px;">Rechazar</button>
+        </div>
+    `;
+
+    panelNotificaciones.innerHTML += html;
+}
+
+function rechazarReto(nombreChallenger) {
+
+    if(stompClient) {
+
+        stompClient.send("/app/reject-challenge", {}, JSON.stringify({
+            from: currentUser,
+            to: nombreChallenger
+        }));
+
+        const challengeMsg = document.getElementById(`challenge-${nombreChallenger}`);
+
+        if(challengeMsg) {
+            challengeMsg.remove();
+        }
+
+        alert("Has rechazado la partida");
+    }
+}
+
+    const elemento = document.getElementById('reto-' + nombreChallenger);
+    if (elemento) elemento.remove();
+
+    </script>
+</body>
+</html>

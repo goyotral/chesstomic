@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login - ChessTomic</title>
+    <style>
+        body { font-family: sans-serif; background: #121212; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-container { background: #1f1f1f; padding: 40px; border-radius: 12px; width: 350px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #333; border: 1px solid #444; color: white; box-sizing: border-box; border-radius: 6px; }
+        button { width: 100%; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1em; }
+        .error { color: #ff5252; font-size: 0.9em; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2 style="margin-top:0">Bienvenido de nuevo</h2>
+        
+        <form th:action="@{/login}" method="post">
+            <div th:if="${param.error}" class="error">Usuario o contraseña incorrectos</div>
+            <div th:if="${param.logout}" style="color: #bbb; margin-bottom: 10px;">Has cerrado sesión</div>
+            
+            <input type="text" name="username" placeholder="Nombre de usuario" required>
+            <input type="password" name="password" placeholder="Contraseña" required>
+            
+            <button type="submit">Entrar</button>
+        </form>
+        <p style="text-align: center; font-size: 0.9em; margin-top: 20px;">
+            <a href="/register" style="color: #4CAF50; text-decoration: none;">¿No tienes cuenta? Regístrate</a>
+        </p>
+    </div>
+</body>
+</html>

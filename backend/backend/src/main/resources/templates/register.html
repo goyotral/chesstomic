@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Registro - ChessTomic</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: sans-serif; background: #121212; color: white; display: flex; justify-content: center; padding: 20px; }
+        .reg-card { background: #1f1f1f; padding: 20px; border-radius: 10px; width: 400px; }
+        input { width: 100%; padding: 10px; margin: 5px 0; background: #333; border: 1px solid #444; color: white; }
+        #map-reg { height: 200px; margin: 10px 0; border-radius: 5px; }
+        .btn-submit { width: 100%; padding: 15px; background: #4CAF50; color: white; border: none; cursor: pointer; font-weight: bold; }
+        /* Estilo para ver los inputs de coordenadas y saber si se llenan */
+        .debug-coords { background: #222; font-size: 10px; color: #777; padding: 5px; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="reg-card">
+        <h2>Crear Cuenta</h2>
+        <form th:action="@{/api/players/register}" method="POST" id="registroForm">
+            <input type="text" name="username" placeholder="Usuario" required>
+            <input type="password" name="password" placeholder="Contraseña" required>
+            <input type="number" name="elo" placeholder="ELO" required>
+            
+            <div id="map-reg"></div>
+            
+            <div class="debug-coords">
+                Lat: <input type="text" id="lat" name="latitude" readonly required>
+                Lon: <input type="text" id="lon" name="longitude" readonly required>
+            </div>
+            
+            <button type="submit" class="btn-submit">FINALIZAR REGISTRO</button>
+        </form>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        var map = L.map('map-reg').setView([40.41, -3.70], 5);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        var marker;
+
+        map.on('click', function(e) {
+            if (marker) map.removeLayer(marker);
+            marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
+            
+            document.getElementById('lat').value = e.latlng.lat;
+            document.getElementById('lon').value = e.latlng.lng;
+            console.log("Coordenadas guardadas:", e.latlng.lat, e.latlng.lng);
+        });
+
+        document.getElementById('registroForm').onsubmit = function() {
+            console.log("Enviando formulario...");
+            return true; 
+        };
+    </script>
+</body>
+</html>

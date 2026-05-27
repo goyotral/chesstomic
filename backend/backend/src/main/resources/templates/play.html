@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>ChessTomic - Partida Online</title>
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    <style>
+        body { background: #121212; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #board { width: 400px; margin: 20px; }
+        .status-box { background: #1f1f1f; padding: 15px; border-radius: 8px; width: 400px; text-align: center; }
+        .info { color: #4CAF50; font-weight: bold; }
+        #promotion-menu {
+    display: none;
+    position: absolute;
+    background: #2b2b2b;
+    border: 2px solid #4CAF50;
+    padding: 10px;
+    border-radius: 8px;
+    z-index: 1000;
+}
+#promotion-menu img {
+    width: 50px;
+    cursor: pointer;
+    margin: 5px;
+}
+#promotion-menu img:hover { background: #444; }
+    </style>
+</head>
+<body>
+    <h2>Partida en Vivo</h2>
+    <div class="status-box">
+        <p>Estado: <span id="status" class="info">Conectando...</span></p>
+        <p>Turno de: <span id="turn" class="info">-</span></p>
+    </div>
+    <div id="promotion-menu">
+    <img src="https://chessboardjs.com/img/chesspieces/wikipedia/wQ.png" onclick="selectPromotion('q')" id="p-q">
+    <img src="https://chessboardjs.com/img/chesspieces/wikipedia/wR.png" onclick="selectPromotion('r')" id="p-r">
+    <img src="https://chessboardjs.com/img/chesspieces/wikipedia/wB.png" onclick="selectPromotion('b')" id="p-b">
+    <img src="https://chessboardjs.com/img/chesspieces/wikipedia/wN.png" onclick="selectPromotion('n')" id="p-n">
+</div>
+
+    <div id="board"></div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+    <script th:inline="javascript">
+        var board = null;
+        var game = new Chess();
+        var stompClient = null;
+        var gameId = "game_default"; 
+
+        function onDragStart (source, piece, position, orientation) {
+            if (game.game_over()) return false;
+            
+            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+                return false;
+            }
+        }
+        var pendingMove = null;
+
+       var pendingMove = null; 
+
+        function onDrop (source, target) {
+            var moveInfo = {
+                from: source,
+                to: target,
+                promotion: 'q' 
+            };
+
+            
+            var piece = game.get(source);
+            if (piece && piece.type === 'p' && (target[1] === '8' || target[1] === '1')) {
+                pendingMove = { from: source, to: target };
+                showPromotionMenu(piece.color, event.pageX, event.pageY);
+                return 'snapback'; 
+            }
+
+            var move = game.move(moveInfo);
+            if (move === null) return 'snapback';
+
+            board.position(game.fen());
+            sendMove(source, target, 'q');
+        }
+
+        function showPromotionMenu(color, x, y) {
+            var menu = document.getElementById('promotion-menu');
+            var prefix = color === 'w' ? 'w' : 'b';
+            document.getElementById('p-q').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${prefix}Q.png`;
+            document.getElementById('p-r').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${prefix}R.png`;
+            document.getElementById('p-b').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${prefix}B.png`;
+            document.getElementById('p-n').src = `https://chessboardjs.com/img/chesspieces/wikipedia/${prefix}N.png`;
+            
+            menu.style.display = 'block';
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+        }
+
+        function selectPromotion(pieceType) {
+            document.getElementById('promotion-menu').style.display = 'none';
+            
+            if (pendingMove) {
+                game.move({
+                    from: pendingMove.from,
+                    to: pendingMove.to,
+                    promotion: pieceType
+                });
+                
+                board.position(game.fen());
+                sendMove(pendingMove.from, pendingMove.to, pieceType);
+                pendingMove = null;
+                updateStatus();
+            }
+        }
+
+        function sendMove(from, to, promotion) {
+            stompClient.send("/app/move/" + gameId, {}, JSON.stringify({
+                from: from,
+                to: to,
+                promotion: promotion, 
+                gameId: gameId
+            }));
+        }
+
+        function updateStatus () {
+            var status = '';
+            var moveColor = (game.turn() === 'b') ? 'Negras' : 'Blancas';
+
+            if (game.in_checkmate()) {
+                status = 'Juego terminado, ' + moveColor + ' en jaque mate.';
+            } else if (game.in_draw()) {
+                status = 'Juego terminado, tablas.';
+            } else {
+                status = 'En curso';
+                if (game.in_check()) status += ', ' + moveColor + ' en jaque';
+            }
+
+            document.getElementById('status').innerHTML = status;
+            document.getElementById('turn').innerHTML = moveColor;
+        }
+
+        function connect() {
+            var socket = new SockJS('/ws-chess');
+            stompClient = Stomp.over(socket);
+            stompClient.connect({}, function (frame) {
+                console.log('Conectado: ' + frame);
+                
+                stompClient.subscribe('/topic/game/' + gameId, function (message) {
+                    var move = JSON.parse(message.body);
+                    game.move({ from: move.from, to: move.to, promotion: 'q' });
+                    board.position(game.fen());
+                    updateStatus();
+                });
+            });
+        }
+
+        var config = {
+            draggable: true,
+            position: 'start',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+        };
+        board = ChessBoard('board', config);
+        
+        connect();
+        updateStatus();
+    </script>
+</body>
+</html>

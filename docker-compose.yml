@@ -1,0 +1,11 @@
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: chesstomic_db
+    environment:
+      - POSTGRES_DB=chesstomic
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=chesstomic_pass
+    ports:
+      - "5432:5432"
